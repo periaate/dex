@@ -1,14 +1,14 @@
-package lan
+package dex
 
-type FunctionNode struct {
-	fn func(args ...Node) Set
+type FnWrapper struct {
+	fn func(args Node) Set
 }
 
-func (fn *FunctionNode) Eval(args ...Node) Set {
-	return fn.fn(args...)
+func (fn *FnWrapper) Eval(args Node) Set {
+	return fn.fn(args)
 }
-func NewFn(fn func(args ...Node) Set) Node {
-	return &FunctionNode{fn}
+func NewFnWrapper(fn func(args Node) Set) Node {
+	return &FnWrapper{fn}
 }
 
 type MapNode struct {
@@ -16,13 +16,17 @@ type MapNode struct {
 	entries map[string]Node
 }
 
-func (m *MapNode) Eval(args ...Node) Set {
+func (m *MapNode) Name() string {
+	return m.name
+}
+
+func (m *MapNode) Eval(args Node) Set {
 	return m
 }
 
 func (m *MapNode) Get(key string) Set {
 	if v, ok := m.entries[key]; ok {
-		return v.Eval()
+		return v.Eval(nil)
 	}
 	return nil
 }
@@ -31,11 +35,40 @@ func NewMapNode(name string, entries map[string]Node) Node {
 	return &MapNode{name, entries}
 }
 
-type StreamNode struct {
+type StreamStmnt struct {
+	name     string
 	Consumer Node
 	Expr     Node
 }
 
-func (s *StreamNode) Eval(args ...Node) Set {
+func (s *StreamStmnt) Name() string {
+	return s.name
+}
+
+func (s *StreamStmnt) Eval(args Node) Set {
 	return s.Consumer.Eval(s.Expr)
+}
+
+type FnMap struct {
+	name    string
+	entries map[string]Node
+}
+
+func (fn *FnMap) Name() string {
+	return fn.name
+}
+
+func (fn *FnMap) Eval(args Node) Set {
+	if args == nil {
+		panic("Function map called without arguments")
+	}
+	s := args.Eval(nil)
+	if v, ok := fn.entries[s.Name()]; ok {
+		return v.Eval(args)
+	}
+	return nil
+}
+
+func NewFnMap(name string, entries map[string]Node) Node {
+	return &FnMap{name, entries}
 }

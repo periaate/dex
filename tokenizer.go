@@ -1,16 +1,15 @@
-package lan
+package dex
 
-// TokenType is the set of tokens that the parser recognizes.
-type TokenType int
-
-func (t TokenType) String() string {
-	return tokenToString[t]
-}
+// Token is the set of tokens that the parser recognizes.
+type Token int
 
 // The set of tokens
 const (
 	// Special tokens
-	EOF TokenType = iota
+	_ Token = iota
+	ILLEGAL
+	EOF
+	NEWLINE
 	WHITESPACE
 
 	IDENT
@@ -19,89 +18,111 @@ const (
 	LBRACE // {
 	RBRACE // }
 
+	LPAREN // (
+	RPAREN // )
+
 	// Operators
 	STREAM // >
 	APPLY  // <
 )
 
+// String returns a string representation of the token.
+func (t Token) String() string {
+	s := tokenToString[t]
+	if s == "" {
+		return "ILLEGAL"
+	}
+	return s
+}
+
 var tokenToString = [...]string{
 	EOF:        "EOF",
-	WHITESPACE: " ",
+	WHITESPACE: "WHITESPACE",
 
 	IDENT: "IDENT",
 
 	LBRACE: "{",
 	RBRACE: "}",
+	LPAREN: "(",
+	RPAREN: ")",
 
 	STREAM: ">",
 	APPLY:  "<",
 }
 
-var runeToToken = map[rune]TokenType{
+var runeToToken = map[rune]Token{
 	'{': LBRACE,
 	'}': RBRACE,
+	'(': LPAREN,
+	')': RPAREN,
 	'>': STREAM,
 	'<': APPLY,
 
 	' ':  WHITESPACE,
-	'\n': EOF,
-	'\t': EOF,
-	'\r': EOF,
+	'\t': WHITESPACE,
+	'\n': NEWLINE,
+
+	'\r': ILLEGAL,
+	'\b': ILLEGAL,
 }
 
-type Token struct {
-	Type  TokenType
-	Value string
+// Scanner is a simple tokenizer for the Dex dexguage.
+type Scanner struct {
+	src   string
+	chPos int
+}
+type Pos struct {
+	Start int
+	End   int
 }
 
-type Tokenizer struct {
-	src string
-	pos int
-}
-
-func NewTokenizer(src string) *Tokenizer {
-	return &Tokenizer{
-		src: src,
-	}
-}
-
-func (t *Tokenizer) NextToken() Token {
+func (s *Scanner) Next() (tok Token, lit string, pos Pos) {
 	var (
-		start int = t.pos
+		start int = s.chPos
 		r     rune
-		tok   TokenType
+		t     Token
 		ok    bool
 	)
 
-	for !ok && t.pos < len(t.src) {
-		r = rune(t.src[t.pos])
-		tok, ok = runeToToken[r]
-		t.pos++
+	for !ok {
+		if s.chPos >= len(s.src) {
+			t = EOF
+			break
+		}
+		r = rune(s.src[s.chPos])
+		t, ok = runeToToken[r]
+		s.chPos++
 	}
 
-	switch tok {
+	switch t {
 	case WHITESPACE:
-		if t.pos-start > 1 {
-			return Token{IDENT, t.src[start : t.pos-1]}
+		if s.chPos-start > 1 {
+			return IDENT, s.src[start : s.chPos-1], Pos{start, s.chPos - 1}
 		}
-		return t.NextToken()
+		return s.Next()
 	case EOF:
-		if t.pos-start > 1 {
-			return Token{IDENT, t.src[start:t.pos]}
+		if s.chPos-start > 1 {
+			return IDENT, s.src[start:s.chPos], Pos{start, s.chPos}
 		}
-		return Token{tok, ""}
+		return t, "", Pos{start, s.chPos}
 	default:
-		if t.pos-start > 1 {
-			t.pos--
-			return Token{IDENT, t.src[start:t.pos]}
+		if s.chPos-start > 1 {
+			s.chPos--
+			return IDENT, s.src[start:s.chPos], Pos{start, s.chPos}
 		}
-		return Token{tok, string(r)}
+		return t, s.src[start:s.chPos], Pos{start, s.chPos}
 	}
 }
 
-func (t *Tokenizer) PeekToken() Token {
-	pos := t.pos
-	tok := t.NextToken()
-	t.pos = pos
+func (s *Scanner) Peek() Token {
+	chPos := s.chPos
+	tok, _, _ := s.Next()
+	s.chPos = chPos
 	return tok
+}
+
+func NewScanner(src string) *Scanner {
+	return &Scanner{
+		src: src,
+	}
 }

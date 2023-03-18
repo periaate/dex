@@ -1,29 +1,60 @@
-package lan
+package dex
 
-type Node interface {
-	Eval(args ...Node) Set
-}
+type EvalType int
 
-type Set interface {
-	Node
-	Get(key string) Set
-}
+const (
+	_          EvalType = iota
+	Expression          // Evaluate
+	Statement           // Do not evaluate
+)
 
 type Parser struct {
-	tk        *Tokenizer
-	tok       Token
-	lastToken Token
-	ast       *AST
-	tar       *AST
+	t   *Scanner
+	ast *AST
+	tar *AST
+
+	S *scopeMap
+
+	tok     Token
+	lastTok Token
+
+	lit     string
+	lastLit string
+}
+
+func NewParser(s *scopeMap) *Parser {
+	if s == nil {
+		s = &scopeMap{make(map[string]Node)}
+	}
+	return &Parser{
+		S: s,
+	}
 }
 
 type AST struct {
-	In Node
-	To *AST
+	In    Node
+	To    *AST
+	From  *AST
+	Name  string
+	Token Token
+	Type  EvalType
 }
 
-func (a *AST) Eval(args ...Node) Set {
-	res := a.In.Eval(args...)
+func help(p *Parser, n Node) {
+	p.tar.In = n
+	p.tar.To = &AST{
+		Token: p.tok,
+		From:  p.tar,
+	}
+	p.tar = p.tar.To
+}
+
+func (a *AST) Eval(args Node) Set {
+	if a.Type == Statement {
+		a.Type = 0
+		return nil
+	}
+	res := a.In.Eval(args)
 
 	if a.To.In == nil {
 		return res
@@ -32,38 +63,44 @@ func (a *AST) Eval(args ...Node) Set {
 	return a.To.Eval(res)
 }
 
-func NewParser(src string) *Parser {
-	return &Parser{
-		tk: NewTokenizer(src),
-	}
-}
-
-var Scope = &scopeMap{make(map[string]Node)}
-
 func (p *Parser) nextToken() {
-	p.lastToken = p.tok
-	p.tok = p.tk.NextToken()
+	p.lastTok = p.tok
+	p.lastLit = p.lit
+	p.tok, p.lit, _ = p.t.Next()
 }
 
-func (p *Parser) Parse() Node {
+func (p *Parser) Parse(src string) Node {
+	p.t = NewScanner(src)
+	return p.parse()
+}
+func (p *Parser) Run(src string, arg Node) Set {
+	p.t = NewScanner(src)
+	return p.parse().Eval(arg)
+}
+
+func (p *Parser) parse() Node {
 	p.ast = &AST{}
 	p.tar = p.ast
-	// defer recoverParse()
 
 	for {
 		p.nextToken()
-		switch p.tok.Type {
+		switch p.tok {
 		case IDENT:
-			switch p.tk.PeekToken().Type {
+			switch p.t.Peek() {
 			case LBRACE:
 				p.parseLiteral()
+			case LPAREN:
+				p.parseFunctionMap()
 			case STREAM:
 				return p.parseStream()
 			case APPLY:
 				p.parseApply()
+				p.ast.Type = Statement
 			default:
 				p.parseFunction()
 			}
+		case LPAREN:
+			p.parseFunctionMap()
 		case EOF:
 			return p.ast
 		}
@@ -71,38 +108,34 @@ func (p *Parser) Parse() Node {
 }
 
 func (p *Parser) parseFunction() {
-	if fn := Scope.Get(p.tok.Value); fn != nil {
-		nn := fn
-		p.tar.In = nn
-		p.tar.To = &AST{}
-		p.tar = p.tar.To
+	if fn := p.S.Get(p.lit); fn != nil {
+		help(p, fn)
 	}
 }
 
 func (p *Parser) parseApply() {
-	name := p.tok.Value
-
 	p.nextToken()
 	expr := &AST{}
-	nast := &AST{To: p.ast, In: expr}
+	applied := &AST{To: p.ast, In: expr}
 
-	err := Scope.Set(name, nast)
+	err := p.S.Set(p.lastLit, applied)
 	if err != nil {
 		panic(err)
 	}
-	p.ast = nast
+	p.ast = applied
 	p.tar = expr
 }
 
 func (p *Parser) parseStream() Node {
-	fn := Scope.Get(p.tok.Value)
+	fn := p.S.Get(p.lit)
 	if fn == nil {
 		panic("Stream to undefined function")
 	}
 
 	p.nextToken()
-	expr := p.Parse()
-	newNode := &StreamNode{
+	expr := p.parse()
+	newNode := &StreamStmnt{
+		name:     p.lit,
 		Consumer: fn,
 		Expr:     expr,
 	}
@@ -115,15 +148,13 @@ func (p *Parser) parseLiteral() {
 	if newNode == nil {
 		panic("null literal: literals can not be empty")
 	}
-	p.tar.In = newNode
-	p.tar.To = &AST{}
-	p.tar = p.tar.To
+	help(p, newNode)
 }
 
 func (p *Parser) parseRecursiveLiteral() Node {
 	var name string
-	if p.lastToken.Type == IDENT {
-		name = p.lastToken.Value
+	if p.lastTok == IDENT {
+		name = p.lastLit
 	}
 
 	entries := make(map[string]Node)
@@ -132,13 +163,11 @@ func (p *Parser) parseRecursiveLiteral() Node {
 		// This either consumes the first "{", moves to next identifier,
 		// or "}". If there is any other token, it is an error.
 		p.nextToken()
-		name := p.tok.Value // Assuming the current token is the map name
+		name := p.lit // Assuming the current token is the map name
 
-		switch p.tok.Type {
+		switch p.tok {
 		case LBRACE:
-			// Like at the start of the function, we need to use the
-			// last token, as the current one isn't an identifier.
-			name = p.lastToken.Value
+			name = p.lastLit
 			e := p.parseRecursiveLiteral()
 			entries[name] = e
 		case RBRACE:
@@ -146,10 +175,54 @@ func (p *Parser) parseRecursiveLiteral() Node {
 		case EOF:
 			return ns
 		default:
-			if p.tok.Type != IDENT {
+			if p.tok != IDENT {
 				panic("Unexpected token in literal")
 			}
 			entries[name] = NewMapNode(name, make(map[string]Node))
+		}
+	}
+}
+
+func (p *Parser) parseFunctionMap() {
+	name := "fnMap"
+	if p.tok == IDENT {
+		name = p.lit
+		p.nextToken()
+	}
+
+	entries := make(map[string]Node)
+
+	for {
+		p.nextToken()
+		switch p.tok {
+		case IDENT:
+			if p.t.Peek() == LBRACE {
+				mapName := p.lit
+				p.nextToken() // Consume the identifier token
+				entries[mapName] = p.parseFunctionMapEntry()
+			}
+		case RPAREN:
+			fallthrough
+		case EOF:
+			fnmap := NewFnMap(name, entries)
+			// Scope.Set(name, NewFunctionMapNode(name, entries))
+
+			help(p, fnmap)
+			return
+		}
+	}
+}
+
+func (p *Parser) parseFunctionMapEntry() Node {
+	start := p.t.chPos
+	p.nextToken() // Consume brace
+	for {
+		p.nextToken()
+		switch p.tok {
+		case RBRACE:
+			return NewParser(p.S).Parse(p.t.src[start : p.t.chPos-1])
+		case EOF:
+			panic("Unexpected EOF in function map entry")
 		}
 	}
 }

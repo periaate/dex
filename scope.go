@@ -1,4 +1,4 @@
-package lan
+package dex
 
 import "errors"
 
@@ -20,8 +20,4 @@ func (m *scopeMap) Set(key string, n Node) error {
 	}
 	m.entries[key] = n
 	return nil
-}
-
-func ResetScope() {
-	Scope = &scopeMap{entries: make(map[string]Node)}
 }
