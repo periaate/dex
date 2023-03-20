@@ -38,35 +38,51 @@ parser.Run(code)
 ### Literals
 
 Map literals are defined with `{}`, with the keys separated by spaces. Each key is also a map.
-`example{ keyOne keyTwo }`
+```
+example{ keyOne keyTwo }
+```
 Maps can be anonymous.
-`{ keyOne keyTwo }`
+```
+{ keyOne keyTwo }
+```
 Map literals can be nested.
-`nested{ keyOne{ nestedKeyOne } keyTwo }`
+```
+nested{ keyOne{ nestedKeyOne } keyTwo }
+```
 
 ### Variables
 
 Variables are defined with `<` operator.
-`ourVariable < mapExample{ hello world }`
+```
+ourVariable < mapExample{ hello world }
+```
 If an identifier is used without it having `{}`, it is assumed to be a scoped expression (function or map).
-`helloWorld{} print`
+```
+helloWorld{} print
+```
 
 ### Function maps
 
 Function maps are defined with `()`, with the keys separated by spaces. Each key in a function map must be followed by `{}` which needs to contain at least one scoped identifier. Function maps work like a switch statement, where the name of the node given as argument is used as the key in the map, and then the node is passed to the related expression and the value returned.
 
-`ourFnMap( doSomething{aFunction anotherOne} doSomethingElse{something important} )`
+```
+ourFnMap( doSomething{aFunction anotherOne} doSomethingElse{something important} )
+```
 Passing a node to this would get the nodes name, and see if its name was either `doSomething` or `doSomethingElse`. Their respective expressions would then be evaluated with the node as argument, and the value returned.
 
 As function maps are expression, they can also be applied to variables.
-`fnMapVariable < ourFnMap( doSomething{aFunction anotherOne} doSomethingElse{something important} )`
+```
+fnMapVariable < ourFnMap( doSomething{aFunction anotherOne} doSomethingElse{something important} )
+```
 
 ### Streams
 
 Streams are similar to pipes, where the left hand side is used as the source, and the right hand side is evaluated with the argument. Streams are defined with `>` operator. Streams are asynchronous.
 
 This would wait for someStream to give inputs, which would then be passed to the function map, and the result would be printed.
-`someStream > fnMapVariable print`
+```
+someStream > fnMapVariable print
+```
 
 
 ### Putting it all together
