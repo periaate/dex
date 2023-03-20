@@ -8,6 +8,9 @@ const (
 	Statement           // Do not evaluate
 )
 
+// Parser implements the necessary logic to parse dex.
+// The parser is implemented as recursive descent parser.
+// Parser implements the Node interface.
 type Parser struct {
 	t   *Scanner
 	ast *AST
@@ -22,6 +25,8 @@ type Parser struct {
 	lastLit string
 }
 
+// NewParser returns a new Parser from the given scopeMap.
+// If nil is passed the function will instantiate a new scopeMap.
 func NewParser(s *scopeMap) *Parser {
 	if s == nil {
 		s = &scopeMap{make(map[string]Node)}
@@ -31,6 +36,10 @@ func NewParser(s *scopeMap) *Parser {
 	}
 }
 
+// AST is both the internal representation of the parsed expression,
+// as well as the final result of parsing a line.
+// AST implements the Node interface, and is typically the value which
+// is saved to the scope or evaluated by the interpreter.
 type AST struct {
 	In    Node
 	To    *AST
@@ -40,7 +49,8 @@ type AST struct {
 	Type  EvalType
 }
 
-func help(p *Parser, n Node) {
+// addToAst adds a new node to the given parsers AST.
+func addToAst(p *Parser, n Node) {
 	p.tar.In = n
 	p.tar.To = &AST{
 		Token: p.tok,
@@ -49,6 +59,9 @@ func help(p *Parser, n Node) {
 	p.tar = p.tar.To
 }
 
+// Eval evaluates the AST. ASTs are evaluated top down; the root is evaluated
+// first and its result is passed to the next node. If the next node does not
+// contain a Node, the result is returned.
 func (a *AST) Eval(args Node) Set {
 	if a.Type == Statement {
 		a.Type = 0
@@ -63,21 +76,27 @@ func (a *AST) Eval(args Node) Set {
 	return a.To.Eval(res)
 }
 
+// nextToken advances the parser to the next token and updates the
+// last token and last literal.
 func (p *Parser) nextToken() {
 	p.lastTok = p.tok
 	p.lastLit = p.lit
 	p.tok, p.lit, _ = p.t.Next()
 }
 
+// Parse creates a new scanner from the argument and then parses it.
 func (p *Parser) Parse(src string) Node {
 	p.t = NewScanner(src)
 	return p.parse()
 }
+
+// Run creates a new scanner from the argument and then parses and evaluates it.
 func (p *Parser) Run(src string, arg Node) Set {
 	p.t = NewScanner(src)
 	return p.parse().Eval(arg)
 }
 
+// parse builds an AST from its scanner.
 func (p *Parser) parse() Node {
 	p.ast = &AST{}
 	p.tar = p.ast
@@ -109,7 +128,7 @@ func (p *Parser) parse() Node {
 
 func (p *Parser) parseFunction() {
 	if fn := p.S.Get(p.lit); fn != nil {
-		help(p, fn)
+		addToAst(p, fn)
 	}
 }
 
@@ -148,7 +167,7 @@ func (p *Parser) parseLiteral() {
 	if newNode == nil {
 		panic("null literal: literals can not be empty")
 	}
-	help(p, newNode)
+	addToAst(p, newNode)
 }
 
 func (p *Parser) parseRecursiveLiteral() Node {
@@ -183,6 +202,10 @@ func (p *Parser) parseRecursiveLiteral() Node {
 	}
 }
 
+// parseFunctionMap scans ahead until it finds a closing parenthesis or identifiers.
+// Multiple identifiers are allowed, and each identifier is treated as the key in
+// the resulting map. Multiple identifiers are allowed, but recursive fnmap literals
+// are not. Using existing fnmap identifiers is possible.
 func (p *Parser) parseFunctionMap() {
 	name := "fnMap"
 	if p.tok == IDENT {
@@ -207,7 +230,7 @@ func (p *Parser) parseFunctionMap() {
 			fnmap := NewFnMap(name, entries)
 			// Scope.Set(name, NewFunctionMapNode(name, entries))
 
-			help(p, fnmap)
+			addToAst(p, fnmap)
 			return
 		}
 	}

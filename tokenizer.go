@@ -71,11 +71,17 @@ type Scanner struct {
 	src   string
 	chPos int
 }
+
+// Pos represents a range in the source code slice.
 type Pos struct {
+	// Start is the index of the first character in the range.
 	Start int
-	End   int
+	// End is the index of the first character after the range.
+	End int
 }
 
+// Next scans for the next token, returning the token, the literal string, and
+// pos, which includes the range where the token was found.
 func (s *Scanner) Next() (tok Token, lit string, pos Pos) {
 	var (
 		start int = s.chPos
@@ -114,6 +120,7 @@ func (s *Scanner) Next() (tok Token, lit string, pos Pos) {
 	}
 }
 
+// Peek returns the next token.
 func (s *Scanner) Peek() Token {
 	chPos := s.chPos
 	tok, _, _ := s.Next()
@@ -121,6 +128,7 @@ func (s *Scanner) Peek() Token {
 	return tok
 }
 
+// NewScanner returns a scanner using the given string as the source.
 func NewScanner(src string) *Scanner {
 	return &Scanner{
 		src: src,
