@@ -72,7 +72,7 @@ Passing a node to this would get the nodes name, and see if its name was either 
 
 As function maps are expression, they can also be applied to variables.
 ```
-fnMapVariable < ourFnMap( doSomething{aFunction anotherOne} doSomethingElse{something important} )
+fnMapVariable < ourFnMap( doThis{doingFn somethingFn} doThat{somethingFn importantFn} )
 ```
 
 ### Streams
